@@ -1,0 +1,2 @@
+gcc -O3 -std=c99 -D_XOPEN_SOURCE=600 initialize.c -o initialize -lm
+gcc -O3 -std=c99 -Iinclude ./src/initialize.c main.c -lm -o md_sim
