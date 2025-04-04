@@ -78,11 +78,11 @@ void nvt_simulation(Particle *particles, NVT_Params params) {
     
     for(int step=0; step<params.nsteps; step++) {
         // 1. 计算力（此处需要具体实现）
-        // compute_forces(particles, params.nparticle);
+        compute_forces(particles, params.nparticle);
         
         // 2. 积分运动方程
         verlet_step1(particles, params.nparticle, params.dt);
-        // 重新计算力（此处省略）
+        // 设置周期性边界条件，重新计算力（此处省略）
         // compute_forces(particles, params.nparticle);
         verlet_step2(particles, params.nparticle, params.dt);
         
@@ -92,7 +92,7 @@ void nvt_simulation(Particle *particles, NVT_Params params) {
             velocity_rescale(particles, params.nparticle, params.target_temp);
         }
         
-        // 4. 输出热力学量
+        // 4. 输出热力学量，最终版本调节成多组输出，减少IO开销和初期数据的涨落影响。
         real ke, temp;
         compute_thermo(particles, params.nparticle, &ke, &temp);
         fprintf(thermo, "%d %.4f %.4f\n", step, temp, ke);
@@ -101,23 +101,3 @@ void nvt_simulation(Particle *particles, NVT_Params params) {
     fclose(thermo);
 }
 
-int main() {
-    // 初始化参数
-    NVT_Params params = {
-        .nparticle = 2916,     // 粒子总数
-        .target_temp = 1.0,    // 目标温度
-        .dt = 0.001,           // 时间步长
-        .nsteps = 10000,       // 总步数
-        .thermo_freq = 100     // 每100步调节一次温度
-    };
-    
-    // 分配内存并初始化粒子（此处需与初始化程序对接）
-    Particle *particles = malloc(params.nparticle * sizeof(Particle));
-    // initialize_from_file(particles, "init.config"); 
-    
-    // 运行NVT模拟
-    nvt_simulation(particles, params);
-    
-    free(particles);
-    return 0;
-}
