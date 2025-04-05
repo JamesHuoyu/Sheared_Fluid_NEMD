@@ -4,8 +4,20 @@
 #include <math.h>
 #include <time.h>
 
+// 周期性边界条件
+void apply_periodic_boundary(Particle *p, int n, real box_size){
+    for(int i=0; i<n; i++){
+        if(p[i].x < -box_size/2.0) p[i].x += box_size;
+        if(p[i].x > box_size/2.0) p[i].x -= box_size;
+        if(p[i].y < -box_size/2.0) p[i].y += box_size;
+        if(p[i].y > box_size/2.0) p[i].y -= box_size;
+        if(p[i].z < -box_size/2.0) p[i].z += box_size;
+        if(p[i].z > box_size/2.0) p[i].z -= box_size;
+    }
+}
+
 // 计算系统动能和温度
-void compute_thermo(Particle *p, int n, real *ke, real *temp) {
+void compute_thermo(const Particle *p, int n, real *ke, real *temp) {
     *ke = 0.0;
     for(int i=0; i<n; i++) {
         *ke += p[i].vx*p[i].vx + p[i].vy*p[i].vy + p[i].vz*p[i].vz;
@@ -51,11 +63,7 @@ void velocity_rescale(Particle *p, int n, real target_temp) {
 
 // 速度Verlet积分第一步
 void verlet_step1(Particle *p, int n, real dt) {
-    for(int i=0; i<n; i++) {
-        p[i].x += p[i].vx * dt + 0.5 * p[i].fx * dt * dt;
-        p[i].y += p[i].vy * dt + 0.5 * p[i].fy * dt * dt;
-        p[i].z += p[i].vz * dt + 0.5 * p[i].fz * dt * dt;
-        
+    for(int i=0; i<n; i++) {        
         p[i].vx += 0.5 * p[i].fx * dt;
         p[i].vy += 0.5 * p[i].fy * dt;
         p[i].vz += 0.5 * p[i].fz * dt;
@@ -65,39 +73,48 @@ void verlet_step1(Particle *p, int n, real dt) {
 // 速度Verlet积分第二步
 void verlet_step2(Particle *p, int n, real dt) {
     for(int i=0; i<n; i++) {
-        p[i].vx += 0.5 * p[i].fx * dt;
-        p[i].vy += 0.5 * p[i].fy * dt;
-        p[i].vz += 0.5 * p[i].fz * dt;
+        p[i].x += p[i].vx * dt;
+        p[i].y += p[i].vy * dt;
+        p[i].z += p[i].vz * dt;
     }
 }
 
 // 主模拟循环
-void nvt_simulation(Particle *particles, NVT_Params params) {
+void nvt_simulation(Particle *particles, const SimulationParams *params) {
     FILE *thermo = fopen("thermo.log", "w");
     fprintf(thermo, "Step Temperature KineticEnergy\n");
-    
-    for(int step=0; step<params.nsteps; step++) {
-        // 1. 计算力（此处需要具体实现）
-        compute_forces(particles, params.nparticle);
-        
-        // 2. 积分运动方程
-        verlet_step1(particles, params.nparticle, params.dt);
-        // 设置周期性边界条件，重新计算力（此处省略）
-        // compute_forces(particles, params.nparticle);
-        verlet_step2(particles, params.nparticle, params.dt);
-        
-        // 3. 周期性温度调节
-        if(step % params.thermo_freq == 0) {
-            remove_momentum(particles, params.nparticle);
-            velocity_rescale(particles, params.nparticle, params.target_temp);
-        }
-        
-        // 4. 输出热力学量，最终版本调节成多组输出，减少IO开销和初期数据的涨落影响。
+    real LJ_cut_force(real r, int type1, int type2);
+    for(int nblock=0; nblock < params->nblocks; nblock++){
         real ke, temp;
-        compute_thermo(particles, params.nparticle, &ke, &temp);
-        fprintf(thermo, "%d %.4f %.4f\n", step, temp, ke);
+        real ke_sum = 0.0, temp_sum = 0.0;
+        for(int step=0; step<params->nsteps; step++) {
+            // 1. 计算力（此处需要具体实现）
+            compute_forces(particles, params->nparticle, params->box_size, CUTOFF, LJ_cut_force);
+            // 2. 积分运动方程
+            verlet_step1(particles, params->nparticle, params->dt);
+            verlet_step2(particles, params->nparticle, params->dt);
+            // 3. 周期性边界条件
+            apply_periodic_boundary(particles, params->nparticle, params->box_size);
+            // 4. 计算力（此处需要具体实现）
+            compute_forces(particles, params->nparticle, params->box_size, CUTOFF, LJ_cut_force);
+            // 5. 积分运动方程
+            verlet_step1(particles, params->nparticle, params->dt);
+            
+            // 周期性温度调节
+            if(step % params->thermo_freq == 0) {
+                remove_momentum(particles, params->nparticle);
+                velocity_rescale(particles, params->nparticle, params->target_temp);
+            }
+            real ke, temp;
+            compute_thermo(particles, params->nparticle, &ke, &temp);
+            ke_sum += ke;
+            temp_sum += temp;
+        }
+        // 5. 输出热力学量
+        ke = ke_sum / params->nsteps;
+        temp = temp_sum / params->nsteps;
+        fprintf(thermo, "%d %.4f %.4f\n", nblock, temp, ke);
     }
-    
     fclose(thermo);
 }
 

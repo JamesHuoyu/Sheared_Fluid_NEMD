@@ -4,9 +4,10 @@ int main(){
     SimulationParams params = {
         .nparticle = 2916,
         .target_temp = 1.0,
-        .dt = 0.001,
+        .dt = 0.005,
         .density = 1.2,
-        .nsteps = 100000,
+        .nsteps = 1000,
+        .nblocks = 10,
         .thermo_freq = 100,
     };
     
@@ -19,4 +20,7 @@ int main(){
     printf("类型0粒子: %d\n", (int)(params.nparticle * 0.8));
     printf("类型1粒子: %d\n", params.nparticle - (int)(params.nparticle * 0.8));
     initialize_velocities(particles, params.nparticle, params.target_temp);
+    printf("速度初始化完成:\n");
+    nvt_simulation(particles, &params);
+    printf("NVT模拟完成:\n");
 }

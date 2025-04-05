@@ -40,7 +40,8 @@ typedef struct {
     real dt;           // 时间步长
     real density;      // 初始密度
     real box_size;     // 模拟盒子尺寸
-    int nsteps;        // 总模拟步数
+    int nsteps;        // 每块模拟步数
+    int nblocks;      // 块数
     int thermo_freq;   // 温度调节频率
 } SimulationParams;
 
@@ -69,9 +70,10 @@ void verlet_step2(Particle *p, int n, real dt);
 
 // 力场计算（不同势函数的接口）
 typedef real (*ForceFunc)(real r2, int type1, int type2);
-void compute_forces(Particle *p, int n, real cutoff, ForceFunc func);
+void compute_forces(Particle *p, int n, real box_size, real cutoff, ForceFunc func);
 
 // 主模拟循环
+void nvt_simulation(Particle *p, const SimulationParams *params);
 void run_md_simulation(Particle *p, const SimulationParams *params);
 
 // 输入输出
