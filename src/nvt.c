@@ -7,12 +7,12 @@
 // 周期性边界条件
 void apply_periodic_boundary(Particle *p, int n, real box_size){
     for(int i=0; i<n; i++){
-        if(p[i].x < -box_size/2.0) p[i].x += box_size;
-        if(p[i].x > box_size/2.0) p[i].x -= box_size;
-        if(p[i].y < -box_size/2.0) p[i].y += box_size;
-        if(p[i].y > box_size/2.0) p[i].y -= box_size;
-        if(p[i].z < -box_size/2.0) p[i].z += box_size;
-        if(p[i].z > box_size/2.0) p[i].z -= box_size;
+        while(p[i].x > box_size / 2.0) p[i].x -= box_size;
+        while(p[i].x < -box_size / 2.0) p[i].x += box_size;
+        while(p[i].y > box_size / 2.0) p[i].y -= box_size;
+        while(p[i].y < -box_size / 2.0) p[i].y += box_size;
+        while(p[i].z > box_size / 2.0) p[i].z -= box_size;
+        while(p[i].z < -box_size / 2.0) p[i].z += box_size;
     }
 }
 
@@ -82,18 +82,25 @@ void verlet_step2(Particle *p, int n, real dt) {
 // 主模拟循环
 void nvt_simulation(Particle *particles, const SimulationParams *params) {
     EnergyComponents energy;
+    int n = params->nparticle;
 
     FILE *thermo = fopen("thermo.log", "w");
-    fprintf(thermo, "Step Temperature KineticEnergy PotentialEnergy PotentialCut ShiftTerm TailCorrection TotalEnergy\n");
+    fprintf(thermo, "Step Temperature E_k/N E_p/N_cut&shifted E_p/N_full TailCorr/N\n");
+    // 初始化系统
+    apply_periodic_boundary(particles, n, params->box_size);
+    remove_momentum(particles, n);
+    compute_forces_and_energy(particles, n, params->box_size, CUTOFF, &energy);
     // 计算长程修正项
     energy.tail_corr = calculate_tail_correction(particles, params->nparticle, params->density, params->box_size);
+    real tail_corr_per_n = energy.tail_corr / n;
 
     for(int nblock=0; nblock < params->nblocks; nblock++){
-        real ke, temp;
-        real ke_sum = 0.0, temp_sum = 0.0, pot_sum = 0.0, total_sum = 0.0;
-        real pot_cut_sum = 0.0, shift_sum = 0.0;
+        real ke_per_n_sum = 0.0;
+        real temp_sum = 0.0;
+        real pe_cut_shifted_per_n_sum = 0.0;
+        real pe_full_per_n_sum = 0.0;
         for(int step=0; step<params->nsteps; step++) {
-            // 1. 计算力（此处需要具体实现）
+            // // 1. 计算力（此处需要具体实现）
             compute_forces_and_energy(particles, params->nparticle, params->box_size, CUTOFF, &energy);
             // 2. 积分运动方程
             verlet_step1(particles, params->nparticle, params->dt);
@@ -105,30 +112,32 @@ void nvt_simulation(Particle *particles, const SimulationParams *params) {
             // 5. 积分运动方程
             verlet_step1(particles, params->nparticle, params->dt);
             
-            // 周期性温度调节
-            if(step % params->thermo_freq == 0) {
-                remove_momentum(particles, params->nparticle);
-                velocity_rescale(particles, params->nparticle, params->target_temp);
-            }
+            // // 周期性温度调节
+            // if(step % params->thermo_freq == 0) {
+            //     velocity_rescale(particles, params->nparticle, params->target_temp);
+            // }
+            real temp;
             compute_thermo(particles, params->nparticle, &energy.kinetic, &temp);
-            real pot_total = energy.potential_cut + energy.shift_term + energy.tail_corr;
-            energy.total = energy.kinetic + pot_total;
+            
+            real ke_per_n = energy.kinetic / n;
+            real pe_cut_shifted_per_n = energy.potential_shifted / n;
+            real pe_full_per_n = (energy.potential_cut + tail_corr_per_n) / n;
 
-            ke_sum += energy.kinetic;
+            ke_per_n_sum += ke_per_n;
             temp_sum += temp;
-            pot_sum += pot_total;
-            pot_cut_sum += energy.potential_cut;
-            shift_sum += energy.shift_term;
-            total_sum += energy.total;
+            pe_cut_shifted_per_n_sum += pe_cut_shifted_per_n;
+            pe_full_per_n_sum += pe_full_per_n;
         }
         // 5. 输出热力学量
-        real ke_avg = ke_sum / params->nsteps;
+        real ke_per_n_avg = ke_per_n_sum / params->nsteps;
         real temp_avg = temp_sum / params->nsteps;
-        real pot_avg = pot_sum / params->nsteps;
-        real pot_cut_avg = pot_cut_sum / params->nsteps;
-        real shift_avg = shift_sum / params->nsteps;
-        real total_avg = total_sum / params->nsteps;
-        fprintf(thermo, "%d %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n", nblock, temp_avg, ke_avg, pot_avg, pot_cut_avg, shift_avg, energy.tail_corr, total_avg);
+        real pe_cut_shifted_per_n_avg = pe_cut_shifted_per_n_sum / params->nsteps;
+        real pe_full_per_n_avg = pe_full_per_n_sum / params->nsteps;
+        fprintf(thermo, "%d %.6f %.6f %.6f %.6f %.6f\n", 
+            nblock, temp_avg, ke_per_n_avg, 
+            pe_cut_shifted_per_n_avg, 
+            pe_full_per_n_avg,
+            tail_corr_per_n);
     }
     fclose(thermo);
 }

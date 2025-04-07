@@ -3,8 +3,12 @@
 #include "md.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
+#ifndef NEAREST_DISTANCE_SQUARE
+#define NEAREST_DISTANCE_SQUARE 1.77
 #endif
 
 static const real epsilon[2][2] = {
@@ -24,10 +28,16 @@ static c_real pot_cut = sr12 - sr6;
 
 ForceEnergyPair LJ_cut_force_energy(real r, int type1, int type2){
     ForceEnergyPair result = {0.0, 0.0};
-
-    if(r < 1.33){
-        return result; //避免计算过近粒子的高能量情况
+    real rc = 1.0 / (r * r);
+    bool overlap = rc > NEAREST_DISTANCE_SQUARE;
+    if(overlap){
+        printf("粒子重叠，距离: %.4f, 最近距离: %.4f\n", r, sqrt(1.0 / NEAREST_DISTANCE_SQUARE));
     }
+    // if(r < nearest_distance){
+    //     result.force = 0.0;
+    //     result.potential = 0.0;
+    //     return result;
+    // }
 
     real r2 = r * r;
     real r6 = r2 * r2 * r2;
@@ -64,7 +74,7 @@ real calculate_shift_term(int type1, int type2){
 
 void compute_forces_and_energy(Particle *particles, int nparticle, real box_size ,real cutoff, EnergyComponents *energy){
     energy->potential_cut = 0.0;
-    energy->shift_term = 0.0;
+    energy->potential_shifted = 0.0;
     // 初始化力
     for(int i = 0; i < nparticle; i++){
         particles[i].fx = 0.0;
@@ -77,12 +87,12 @@ void compute_forces_and_energy(Particle *particles, int nparticle, real box_size
             real dy = particles[j].y - particles[i].y;
             real dz = particles[j].z - particles[i].z;
             // 处理周期性边界条件
-            if (dx > 0.5 * box_size) dx -= box_size;
-            if (dx < -0.5 * box_size) dx += box_size;
-            if (dy > 0.5 * box_size) dy -= box_size;
-            if (dy < -0.5 * box_size) dy += box_size;
-            if (dz > 0.5 * box_size) dz -= box_size;
-            if (dz < -0.5 * box_size) dz += box_size;
+            while(dx > box_size / 2.0) dx -= box_size;
+            while(dx < -box_size / 2.0) dx += box_size;
+            while(dy > box_size / 2.0) dy -= box_size;
+            while(dy < -box_size / 2.0) dy += box_size;
+            while(dz > box_size / 2.0) dz -= box_size;
+            while(dz < -box_size / 2.0) dz += box_size;
             // 计算距离
             real r = sqrt(dx * dx + dy * dy + dz * dz);
             ForceEnergyPair pair = LJ_cut_force_energy(r, particles[i].type, particles[j].type);
@@ -98,7 +108,7 @@ void compute_forces_and_energy(Particle *particles, int nparticle, real box_size
                 energy->potential_cut += pair.potential;
 
                 real shift = calculate_shift_term(particles[i].type, particles[j].type);
-                energy->shift_term -= shift;
+                energy->potential_shifted += (pair.potential - shift);
             }
         }
     }
@@ -120,21 +130,28 @@ real calculate_tail_correction(Particle *particles, int nparticle, real density,
         for(int type2 = 0; type2 < 2; type2 ++){
             real n1 = type_count[type1];
             real n2 = type_count[type2];
+            real pairs;
 
-            if(type1 == type2){
-                n2 --; //避免自相互作用计数
+            if (type1 == type2) {
+                pairs = n1 * (n1 - 1) / 2.0; // 相同类型的粒子对数目
+            } else {
+                pairs = n1 * n2; // 不同类型的粒子对数目
             }
-            if(n1 > 0 && n2 > 0){
+
+            if (pairs > 0) {
                 real eps = epsilon[type1][type2];
                 real sig = sigma[type1][type2];
-                real sig2 = sig * sig;
-                real sig6 = sig2 * sig2 * sig2;
+                real sig3 = sig * sig * sig;
+                real sig6 = sig3 * sig3;
                 real sig12 = sig6 * sig6;
 
-                real rc3 = CUTOFF * CUTOFF * CUTOFF;
+                real rc = CUTOFF;
+                real rc3 = rc * rc * rc;
                 real rc9 = rc3 * rc3 * rc3;
 
-                real correction = (8.0 / 3.0) * M_PI * n1 * n2 * density * eps * (sig12 / (9.0 * rc9) - sig6 / (3.0 * rc3));
+                real term1 = sig12 / (9.0 * rc9);
+                real term2 = sig6 / (3.0 * rc3);
+                real correction = (8.0 / 3.0) * M_PI * pairs * density * eps * (term1 - term2);
                 tail_corr += correction;
             }
         }

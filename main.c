@@ -7,8 +7,8 @@ int main(){
         .dt = 0.005,
         .density = 0.75,
         .nsteps = 1000,
-        .nblocks = 10,
-        .thermo_freq = 100,
+        .nblocks = 1,
+        .thermo_freq = 10,
     };
     
     Particle *particles = malloc(params.nparticle * sizeof(Particle));

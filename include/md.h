@@ -44,7 +44,7 @@ typedef struct {
 typedef struct{
   real kinetic; // 动能
   real potential_cut; // 截断势能
-  real shift_term; // cut-shift项
+  real potential_shifted; // cut-shift项
   real tail_corr; // 长程修正项
   real total; // 总能量
 } EnergyComponents;
