@@ -2,10 +2,10 @@
 
 int main(){
     SimulationParams params = {
-        .nparticle = 2916,
+        .nparticle = 256,
         .target_temp = 1.0,
         .dt = 0.005,
-        .density = 1.2,
+        .density = 0.75,
         .nsteps = 1000,
         .nblocks = 10,
         .thermo_freq = 100,

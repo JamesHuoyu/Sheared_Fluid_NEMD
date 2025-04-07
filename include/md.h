@@ -31,6 +31,30 @@ typedef struct {
 } xorshift128p_state;
 
 /*-----------------------------
+  力场相关结构体
+-----------------------------*/
+typedef struct {
+  real force;
+  real potential;
+} ForceEnergyPair;
+
+/*--------------------------
+函数能量和压力结构体
+---------------------------*/
+typedef struct{
+  real kinetic; // 动能
+  real potential_cut; // 截断势能
+  real shift_term; // cut-shift项
+  real tail_corr; // 长程修正项
+  real total; // 总能量
+} EnergyComponents;
+/*-------------------------------*/
+typedef struct{
+  real virial; // 压力张量
+  real pressure; // 压强
+} PressureComponents;
+
+/*-----------------------------
   系统参数结构体
 -----------------------------*/
 // NVT系综参数
@@ -69,8 +93,10 @@ void verlet_step1(Particle *p, int n, real dt);
 void verlet_step2(Particle *p, int n, real dt);
 
 // 力场计算（不同势函数的接口）
-typedef real (*ForceFunc)(real r2, int type1, int type2);
+typedef ForceEnergyPair (*ForceFunc)(real r2, int type1, int type2);
+void compute_forces_and_energy(Particle *p, int nparticle, real box_size, real cutoff, EnergyComponents *energy);
 void compute_forces(Particle *p, int n, real box_size, real cutoff, ForceFunc func);
+real calculate_tail_correction(Particle *p, int nparticle, real density, real box_size);
 
 // 主模拟循环
 void nvt_simulation(Particle *p, const SimulationParams *params);
